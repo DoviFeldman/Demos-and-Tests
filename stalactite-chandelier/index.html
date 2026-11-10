@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stalactite Chandelier</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0a09;
+    font-family: system-ui, sans-serif; color: #e9e2d6; }
+  canvas { display: block; }
+  #bar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 8px;
+    justify-content: center; padding: 14px; flex-wrap: wrap; }
+  button { font: inherit; padding: 9px 16px; border-radius: 999px; cursor: pointer;
+    border: 1px solid #5a5148; background: #1b1815; color: inherit; }
+  button[aria-pressed="true"] { background: #f1d9a8; color: #1b1815; border-color: #f1d9a8; }
+  #msg { position: fixed; top: 14px; left: 0; right: 0; text-align: center;
+    font-size: 14px; opacity: .75; pointer-events: none; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="msg">Loading model…</div>
+<div id="bar">
+  <button id="lit" aria-pressed="true">Lamp on</button>
+  <button id="unlit" aria-pressed="false">Lamp off</button>
+  <button id="spin" aria-pressed="true">Rotate</button>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
+
+const q = new URLSearchParams(location.search);
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 10, 5000);
+const az = parseFloat(q.get('az') ?? '0.6'), el = parseFloat(q.get('el') ?? '-0.12');
+const dist = parseFloat(q.get('d') ?? '620');
+const target = new THREE.Vector3(0, -112, 0);
+camera.position.set(target.x + dist * Math.cos(el) * Math.sin(az),
+                    target.y + dist * Math.sin(el),
+                    target.z + dist * Math.cos(el) * Math.cos(az));
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.copy(target);
+controls.enableDamping = true;
+controls.autoRotate = q.get('spin') !== '0';
+controls.autoRotateSpeed = 1.2;
+
+// daylight rig for the "lamp off" view
+const key = new THREE.DirectionalLight(0xffffff, 2.4); key.position.set(300, 200, 400);
+const fill = new THREE.DirectionalLight(0xbfd4ff, 0.9); fill.position.set(-400, -100, -200);
+const amb = new THREE.HemisphereLight(0xffffff, 0x55504a, 0.9);
+scene.add(key, fill, amb);
+
+const litMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+const offMat = new THREE.MeshStandardMaterial({ color: 0xf2efe8, roughness: 0.62,
+  side: THREE.DoubleSide });
+let mesh;
+
+function setMode(lit) {
+  if (mesh) mesh.material = lit ? litMat : offMat;
+  scene.background = new THREE.Color(lit ? 0x0b0a09 : 0x2a2d33);
+  document.getElementById('lit').setAttribute('aria-pressed', lit);
+  document.getElementById('unlit').setAttribute('aria-pressed', !lit);
+}
+
+new PLYLoader().load('preview.ply', (geo) => {
+  geo.computeVertexNormals();
+  mesh = new THREE.Mesh(geo, litMat);
+  scene.add(mesh);
+  setMode(q.get('mode') !== 'off');
+  document.getElementById('msg').textContent = 'Drag to orbit · scroll to zoom';
+  window.__ready = true;
+}, undefined, () => { document.getElementById('msg').textContent = 'Could not load preview.ply'; });
+
+document.getElementById('lit').onclick = () => setMode(true);
+document.getElementById('unlit').onclick = () => setMode(false);
+document.getElementById('spin').onclick = (e) => {
+  controls.autoRotate = !controls.autoRotate;
+  e.currentTarget.setAttribute('aria-pressed', controls.autoRotate);
+};
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+</script>
+</body>
+</html>
